@@ -1,5 +1,9 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'dart:typed_data';
+
 import '../models/user_model.dart';
 import '../models/item_report_model.dart';
 import '../models/claim_model.dart';
@@ -9,89 +13,127 @@ class AppState extends ChangeNotifier {
   UserModel? _currentUser;
   final List<ItemReport> _items = [];
   final List<ClaimModel> _claims = [];
+  final _supabase = Supabase.instance.client;
 
   UserModel? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
   bool get isAdmin => _currentUser?.role == UserRole.admin;
+  bool get isModerator => isAdmin || _currentUser?.role == UserRole.moderator;
   List<ItemReport> get items => List.unmodifiable(_items);
   List<ClaimModel> get claims => List.unmodifiable(_claims);
 
-  AppState() {
-    _initDemoData();
+  Future<void> initialize() async {
+    _setUser(_supabase.auth.currentUser);
+    if (_currentUser != null) {
+      try {
+        await loadReports();
+        await loadClaims();
+      } catch (_) {
+        // Authentication remains valid if report loading is temporarily unavailable.
+      }
+    }
   }
 
-  void _initDemoData() {
-    _items.addAll([
-      ItemReport(
-        id: 'mock_1',
-        ownerId: 'student_99',
-        ownerName: 'Juan Dela Cruz',
-        reportType: ReportType.lost,
-        itemName: 'Casio Scientific Calculator FX-991EX',
-        category: 'Phones and electronics',
-        description: 'Black calculator left on desk with a tiny blue star sticker on back.',
-        incidentDate: DateTime.now().subtract(const Duration(days: 1)),
-        generalLocation: 'Engineering Building (Boac Campus) - Room 201',
-        createdAt: DateTime.now().subtract(const Duration(hours: 12)),
-      ),
-      ItemReport(
-        id: 'mock_2',
-        ownerId: 'student_88',
-        ownerName: 'Maria Santos',
-        reportType: ReportType.found,
-        itemName: 'MarSU Student ID Card',
-        category: 'ID cards',
-        description: 'Found under the bleachers of the campus gymnasium.',
-        incidentDate: DateTime.now().subtract(const Duration(hours: 5)),
-        generalLocation: 'University Gymnasium',
-        createdAt: DateTime.now().subtract(const Duration(hours: 4)),
-      ),
-      ItemReport(
-        id: 'mock_3',
-        ownerId: 'student_77',
-        ownerName: 'Carlo Mendoza',
-        reportType: ReportType.found,
-        itemName: 'Silver Flash Drive (Sandisk 64GB)',
-        category: 'Phones and electronics',
-        description: 'Plugged into PC #12 in the ICT Computer Laboratory.',
-        incidentDate: DateTime.now().subtract(const Duration(days: 2)),
-        generalLocation: 'ICT Building - Computer Lab 1',
-        status: ItemStatus.claimPending,
-        createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      ),
-    ]);
-
-    _claims.add(
-      ClaimModel(
-        id: 'claim_1',
-        reportId: 'mock_3',
-        claimantId: 'student_current',
-        claimantName: 'Demo Student Account',
-        claimantContactHidden: '09123456789',
-        privateClaimDetails: 'Contains folder named "IT211_Project" and photos from Intramurals.',
-        status: ClaimStatus.pending,
-        createdAt: DateTime.now().subtract(const Duration(hours: 6)),
-      ),
-    );
+  void _setUser(User? user) {
+    _currentUser = user == null
+        ? null
+        : UserModel(
+            id: user.id,
+            email: user.email ?? '',
+            fullName:
+                user.userMetadata?['full_name'] as String? ?? user.email ?? '',
+            studentOrEmpId:
+                user.userMetadata?['student_or_emp_id'] as String? ?? '',
+            role: switch (user.appMetadata['role']) {
+              'admin' => UserRole.admin,
+              'moderator' => UserRole.moderator,
+              _ => UserRole.student,
+            },
+          );
   }
 
-  void loginDemo({required bool asAdmin}) {
-    _currentUser = UserModel(
-      id: asAdmin ? 'admin_01' : 'student_current',
-      email: asAdmin ? 'admin@marsu.edu.ph' : 'student@marsu.edu.ph',
-      fullName: asAdmin ? 'Campus Admin (DSA Boac)' : 'Demo Student Account',
-      studentOrEmpId: asAdmin ? 'EMP-2023-01' : '20-BSIT-0442',
-      role: asAdmin ? UserRole.admin : UserRole.student,
+  Future<void> signIn({required String email, required String password}) async {
+    final response = await _supabase.auth.signInWithPassword(
+      email: email,
+      password: password,
     );
+    _setUser(response.user);
+    notifyListeners();
+    try {
+      await loadReports();
+      await loadClaims();
+    } catch (_) {
+      // Do not turn a successful login into a login error when report loading fails.
+    }
+  }
+
+  Future<void> signUp({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    final response = await _supabase.auth.signUp(
+      email: email,
+      password: password,
+      data: {'full_name': fullName},
+    );
+    if (response.session == null) {
+      throw const AuthException(
+        'Account created. Check your email to confirm it before signing in.',
+      );
+    }
+    _setUser(response.user);
+    if (_currentUser != null) {
+      await loadReports();
+      await loadClaims();
+    }
     notifyListeners();
   }
 
-  void logout() {
+  Future<void> logout() async {
+    await _supabase.auth.signOut();
     _currentUser = null;
     notifyListeners();
   }
 
-  void addItemReport({
+  Future<void> loadReports() async {
+    final rows = await _supabase
+        .from('item_reports')
+        .select()
+        .order('created_at', ascending: false);
+    _items
+      ..clear()
+      ..addAll(
+        (rows as List).map(
+          (row) => ItemReport.fromMap(Map<String, dynamic>.from(row)),
+        ),
+      );
+    notifyListeners();
+  }
+
+  Future<void> loadClaims() async {
+    final rows = await _supabase
+        .from('item_claims')
+        .select(
+          'id,report_id,claimant_id,claimant_name,claimant_contact_hidden,private_claim_details,status,created_at',
+        )
+        .order('created_at', ascending: false);
+    _claims
+      ..clear()
+      ..addAll(
+        (rows as List).map(
+          (row) => ClaimModel.fromMap(Map<String, dynamic>.from(row)),
+        ),
+      );
+    notifyListeners();
+  }
+
+  Future<void> refreshData() async {
+    await loadReports();
+    await loadClaims();
+  }
+
+  Future<void> addItemReport({
     required ReportType reportType,
     required String itemName,
     required String category,
@@ -99,8 +141,10 @@ class AppState extends ChangeNotifier {
     required DateTime incidentDate,
     required String generalLocation,
     String? imagePath,
-  }) {
-    if (_currentUser == null) return;
+  }) async {
+    if (_currentUser == null) {
+      throw const AuthException('You must be signed in to submit a report.');
+    }
     final newReport = ItemReport(
       id: _uuid.v4(),
       ownerId: _currentUser!.id,
@@ -114,22 +158,55 @@ class AppState extends ChangeNotifier {
       imagePath: imagePath,
       createdAt: DateTime.now(),
     );
+    await _supabase.from('item_reports').insert(newReport.toMap());
     _items.insert(0, newReport);
     notifyListeners();
   }
 
-  void updateReportStatus(String reportId, ItemStatus newStatus) {
-    final index = _items.indexWhere((item) => item.id == reportId);
-    if (index != -1) {
-      _items[index] = _items[index].copyWith(status: newStatus);
-      notifyListeners();
-    }
+  Future<String> signedImageUrl(String imagePath) {
+    return _supabase.storage
+        .from('lost-found-images')
+        .createSignedUrl(imagePath, 3600);
   }
 
-  void toggleFlagReport(String reportId) {
+  Future<String> uploadImage({
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    if (_currentUser == null) {
+      throw const AuthException('You must be signed in to upload an image.');
+    }
+    final path = '${_currentUser!.id}/${_uuid.v4()}_$fileName';
+    await _supabase.storage
+        .from('lost-found-images')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(
+            contentType: 'image/jpeg',
+            upsert: false,
+          ),
+        );
+    return path;
+  }
+
+  Future<void> updateReportStatus(String reportId, ItemStatus newStatus) async {
+    await _supabase.rpc(
+      'update_item_status',
+      params: {'p_report_id': reportId, 'p_status': newStatus.name},
+    );
+    await loadReports();
+  }
+
+  Future<void> toggleFlagReport(String reportId) async {
     final index = _items.indexWhere((item) => item.id == reportId);
     if (index != -1) {
-      _items[index] = _items[index].copyWith(isFlagged: !_items[index].isFlagged);
+      final newValue = !_items[index].isFlagged;
+      await _supabase
+          .from('item_reports')
+          .update({'is_flagged': newValue})
+          .eq('id', reportId);
+      _items[index] = _items[index].copyWith(isFlagged: newValue);
       notifyListeners();
     }
   }
@@ -140,37 +217,43 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void submitClaim({
+  Future<void> submitClaim({
     required String reportId,
     required String privateProof,
     required String contactNumber,
-  }) {
-    if (_currentUser == null) return;
+  }) async {
+    if (_currentUser == null) {
+      throw const AuthException('You must be signed in to submit a claim.');
+    }
     final newClaim = ClaimModel(
       id: _uuid.v4(),
       reportId: reportId,
       claimantId: _currentUser!.id,
       claimantName: _currentUser!.fullName,
-      claimantContactHidden: contactNumber,
+      claimantContact: contactNumber,
+      claimantContactHidden: true,
       privateClaimDetails: privateProof,
       status: ClaimStatus.pending,
       createdAt: DateTime.now(),
     );
-    _claims.insert(0, newClaim);
-    updateReportStatus(reportId, ItemStatus.claimPending);
-    notifyListeners();
+    await _supabase.from('item_claims').insert(newClaim.toMap());
+    await refreshData();
   }
 
-  void reviewClaim(String claimId, ClaimStatus newStatus) {
-    final index = _claims.indexWhere((c) => c.id == claimId);
-    if (index != -1) {
-      _claims[index] = _claims[index].copyWith(status: newStatus);
-      if (newStatus == ClaimStatus.approved || newStatus == ClaimStatus.completed) {
-        updateReportStatus(_claims[index].reportId, ItemStatus.returned);
-      } else if (newStatus == ClaimStatus.rejected) {
-        updateReportStatus(_claims[index].reportId, ItemStatus.open);
-      }
-      notifyListeners();
+  Future<void> reviewClaim(String claimId, ClaimStatus newStatus) async {
+    if (!isModerator) {
+      throw const AuthException(
+        'Only authorized moderators can decide claims.',
+      );
     }
+    await _supabase.rpc(
+      'decide_claim',
+      params: {'p_claim_id': claimId, 'p_status': newStatus.name},
+    );
+    await refreshData();
+  }
+
+  List<ClaimModel> claimsForReport(String reportId) {
+    return _claims.where((claim) => claim.reportId == reportId).toList();
   }
 }

@@ -1,4 +1,4 @@
-﻿enum UserRole { student, faculty, staff, admin }
+﻿enum UserRole { student, faculty, staff, moderator, admin }
 
 class UserModel {
   final String id;

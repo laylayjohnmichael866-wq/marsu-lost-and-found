@@ -1,7 +1,9 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../models/item_report_model.dart';
 import '../../providers/app_state.dart';
+import '../../widgets/item_status_badges.dart';
 
 class MyReportsScreen extends StatelessWidget {
   const MyReportsScreen({super.key});
@@ -9,10 +11,21 @@ class MyReportsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = Provider.of<AppState>(context);
-    final myItems = appState.items.where((i) => i.ownerId == appState.currentUser?.id).toList();
+    final myItems = appState.items
+        .where((i) => i.ownerId == appState.currentUser?.id)
+        .toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Campus Items')),
+      appBar: AppBar(
+        title: const Text('My Campus Items'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh reports',
+            onPressed: () => appState.refreshData(),
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       body: myItems.isEmpty
           ? const Center(child: Text('You have not reported any items yet.'))
           : ListView.builder(
@@ -20,16 +33,41 @@ class MyReportsScreen extends StatelessWidget {
               itemCount: myItems.length,
               itemBuilder: (ctx, idx) {
                 final item = myItems[idx];
-                return Card(
+                return StatusCard(
+                  backgroundColor: StatusColors.forItemStatus(
+                    item.status,
+                    known: item.hasKnownStatus,
+                  ),
                   child: ListTile(
-                    title: Text(item.itemName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('Status: ${item.status.name.toUpperCase()}'),
+                    contentPadding: EdgeInsets.zero,
+                    textColor: Colors.white,
+                    iconColor: Colors.white,
+                    title: Text(
+                      item.itemName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: ItemStatusBadges(item: item),
+                    ),
                     trailing: PopupMenuButton<ItemStatus>(
-                      onSelected: (s) => appState.updateReportStatus(item.id, s),
+                      iconColor: Colors.white,
+                      onSelected: (s) =>
+                          appState.updateReportStatus(item.id, s),
                       itemBuilder: (_) => [
-                        const PopupMenuItem(value: ItemStatus.open, child: Text('Mark as Open')),
-                        const PopupMenuItem(value: ItemStatus.returned, child: Text('Mark as Returned')),
-                        const PopupMenuItem(value: ItemStatus.closed, child: Text('Close Report')),
+                        const PopupMenuItem(
+                          value: ItemStatus.open,
+                          child: Text('Mark as Open'),
+                        ),
+                        if (appState.isModerator)
+                          const PopupMenuItem(
+                            value: ItemStatus.returned,
+                            child: Text('Mark as Returned'),
+                          ),
+                        const PopupMenuItem(
+                          value: ItemStatus.closed,
+                          child: Text('Close Report'),
+                        ),
                       ],
                     ),
                   ),
