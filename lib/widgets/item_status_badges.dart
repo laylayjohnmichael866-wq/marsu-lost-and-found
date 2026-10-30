@@ -64,12 +64,19 @@ class ClaimStatusDisplay {
   static ClaimStatusDisplay fromName(String? name) {
     switch (name) {
       case 'approved':
+        return ClaimStatusDisplay(
+          'CLAIM APPROVED / AWAITING HANDOVER',
+          StatusColors.approved,
+        );
       case 'completed':
-        return ClaimStatusDisplay('APPROVED', StatusColors.approved);
+        return ClaimStatusDisplay(
+          'SUCCESSFULLY RETURNED',
+          StatusColors.approved,
+        );
       case 'rejected':
-        return ClaimStatusDisplay('REJECTED', StatusColors.rejected);
+        return ClaimStatusDisplay('CLAIM REJECTED', StatusColors.rejected);
       default:
-        return ClaimStatusDisplay('PENDING', StatusColors.neutral);
+        return ClaimStatusDisplay('WAITING FOR REVIEW', StatusColors.neutral);
     }
   }
 }

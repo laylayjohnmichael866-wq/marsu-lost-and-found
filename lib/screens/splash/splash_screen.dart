@@ -1,5 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../providers/app_state.dart';
 import '../auth/login_screen.dart';
@@ -13,19 +16,29 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  Timer? _navigationTimer;
+
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 1500), () {
+    _navigationTimer = Timer(const Duration(milliseconds: 1500), () {
       if (!mounted) return;
       final appState = Provider.of<AppState>(context, listen: false);
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => appState.isAuthenticated ? const MainNavigationShell() : const LoginScreen(),
+          builder: (_) => appState.isAuthenticated
+              ? const MainNavigationShell()
+              : const LoginScreen(),
         ),
       );
     });
+  }
+
+  @override
+  void dispose() {
+    _navigationTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -38,9 +51,19 @@ class _SplashScreenState extends State<SplashScreen> {
           children: [
             Icon(Icons.search_rounded, size: 70, color: Colors.white),
             SizedBox(height: 16),
-            Text('MarSU Lost & Found', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+            Text(
+              'MarSU Lost & Found',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
             SizedBox(height: 6),
-            Text('Boac Campus Recovery Platform', style: TextStyle(fontSize: 13, color: Colors.white70)),
+            Text(
+              'Boac Campus Recovery Platform',
+              style: TextStyle(fontSize: 13, color: Colors.white70),
+            ),
           ],
         ),
       ),

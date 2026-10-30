@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -88,7 +88,7 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
           bytes: _selectedBytes!,
         );
       }
-      await appState.addItemReport(
+      final matches = await appState.addItemReport(
         reportType: _type,
         itemName: _nameController.text.trim(),
         category: _category,
@@ -98,9 +98,11 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
         imagePath: imagePath,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report submitted successfully!')),
-      );
+      final message = _type == ReportType.found && matches.isNotEmpty
+          ? 'Report submitted. ${matches.length} possible match${matches.length == 1 ? '' : 'es'} found for lost-item owners.'
+          : 'Report submitted successfully!';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
       Navigator.pop(context);
     } catch (error) {
       if (mounted) {
