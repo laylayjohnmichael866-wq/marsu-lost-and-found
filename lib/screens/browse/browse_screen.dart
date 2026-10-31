@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/item_report_model.dart';
 import '../../providers/app_state.dart';
+import '../../widgets/animated_reveal.dart';
 import '../../widgets/item_status_badges.dart';
 import '../item_details/item_details_screen.dart';
 
@@ -86,33 +87,38 @@ class _BrowseScreenState extends State<BrowseScreen> {
               itemCount: filtered.length,
               itemBuilder: (ctx, idx) {
                 final item = filtered[idx];
-                return StatusCard(
-                  backgroundColor: StatusColors.forReportType(item.reportType),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ItemDetailsScreen(item: item),
+                return AnimatedReveal(
+                  key: ValueKey(item.id),
+                  child: StatusCard(
+                    backgroundColor: StatusColors.forReportType(
+                      item.reportType,
                     ),
-                  ),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    textColor: Colors.white,
-                    iconColor: Colors.white,
-                    title: Text(
-                      item.itemName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ItemDetailsScreen(item: item),
+                      ),
                     ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 4),
-                        ItemStatusBadges(item: item),
-                        const SizedBox(height: 4),
-                        Text(
-                          item.generalLocation,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                      ],
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      textColor: Colors.white,
+                      iconColor: Colors.white,
+                      title: Text(
+                        item.itemName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          ItemStatusBadges(item: item),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.generalLocation,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

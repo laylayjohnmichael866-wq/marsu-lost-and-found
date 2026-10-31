@@ -2,10 +2,7 @@
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import 'dart:convert';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/services.dart';
 
 import 'core/theme/app_theme.dart';
 import 'providers/app_state.dart';
@@ -15,23 +12,28 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  const supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'https://eeedchsnxqyibprjkpdu.supabase.co',
+  );
+  const supabasePublishableKey = String.fromEnvironment(
+    'SUPABASE_PUBLISHABLE_KEY',
+    defaultValue: 'sb_publishable_avuVBs179vNLs8mNUpSNXQ_M0odGJuv',
+  );
+  if (supabaseUrl.isEmpty || supabasePublishableKey.isEmpty) {
+    throw StateError(
+      'Missing Supabase configuration. Provide SUPABASE_URL and '
+      'SUPABASE_PUBLISHABLE_KEY using --dart-define.',
+    );
+  }
+
+  await Supabase.initialize(
+    url: supabaseUrl,
+    publishableKey: supabasePublishableKey,
+  );
+
   // Initialize Firebase for Cloud Firestore
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  const definedUrl = String.fromEnvironment('SUPABASE_URL');
-  const definedKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
-  final config = definedUrl.isNotEmpty && definedKey.isNotEmpty
-      ? {'SUPABASE_URL': definedUrl, 'SUPABASE_PUBLISHABLE_KEY': definedKey}
-      : Map<String, dynamic>.from(
-          jsonDecode(await rootBundle.loadString('supabase_config.json'))
-              as Map,
-        );
-
-  // Initialize Supabase for authentication and storage.
-  await Supabase.initialize(
-    url: config['SUPABASE_URL'] as String,
-    publishableKey: config['SUPABASE_PUBLISHABLE_KEY'] as String,
-  );
 
   final appState = AppState();
   await appState.initialize();

@@ -9,7 +9,13 @@ import '../../providers/app_state.dart';
 
 class ReportItemScreen extends StatefulWidget {
   final ReportType initialType;
-  const ReportItemScreen({super.key, this.initialType = ReportType.lost});
+  final VoidCallback? onSubmitted;
+
+  const ReportItemScreen({
+    super.key,
+    this.initialType = ReportType.lost,
+    this.onSubmitted,
+  });
 
   @override
   State<ReportItemScreen> createState() => _ReportItemScreenState();
@@ -75,6 +81,7 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
   }
 
   Future<void> _submit() async {
+    if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
     try {
@@ -97,13 +104,18 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
         generalLocation: _locationController.text.trim(),
         imagePath: imagePath,
       );
+      await appState.loadReports();
       if (!mounted) return;
       final message = _type == ReportType.found && matches.isNotEmpty
           ? 'Report submitted. ${matches.length} possible match${matches.length == 1 ? '' : 'es'} found for lost-item owners.'
           : 'Report submitted successfully!';
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
-      Navigator.pop(context);
+      if (widget.onSubmitted != null) {
+        widget.onSubmitted!();
+      } else if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -187,10 +199,14 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(
-                        _selectedBytes!,
-                        height: 180,
-                        fit: BoxFit.cover,
+                      child: Container(
+                        height: 260,
+                        width: double.infinity,
+                        color: const Color(0xFFF1F3F5),
+                        child: Image.memory(
+                          _selectedBytes!,
+                          fit: BoxFit.contain,
+                        ),
                       ),
                     ),
                     Row(

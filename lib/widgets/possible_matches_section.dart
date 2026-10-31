@@ -107,21 +107,29 @@ class _PossibleMatchCard extends StatelessWidget {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const SizedBox(
-                      height: 120,
+                      height: 260,
                       child: Center(child: CircularProgressIndicator()),
                     );
                   }
                   if (!snapshot.hasData) {
                     return const SizedBox.shrink();
                   }
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      snapshot.data!,
-                      height: 150,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 240),
+                    switchInCurve: Curves.easeOut,
+                    child: ClipRRect(
+                      key: ValueKey(snapshot.data!),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        height: 260,
+                        width: double.infinity,
+                        color: const Color(0xFFF1F3F5),
+                        child: Image.network(
+                          snapshot.data!,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        ),
+                      ),
                     ),
                   );
                 },

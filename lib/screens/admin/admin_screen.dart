@@ -227,13 +227,16 @@ class _AdminScreenState extends State<AdminScreen> {
                   builder: (context, snapshot) => snapshot.hasData
                       ? Padding(
                           padding: const EdgeInsets.only(top: 8),
-                          child: Image.network(
-                            snapshot.data!,
-                            height: 140,
+                          child: Container(
+                            height: 260,
                             width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                const Text('Image unavailable'),
+                            color: const Color(0xFFF1F3F5),
+                            child: Image.network(
+                              snapshot.data!,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) =>
+                                  const Text('Image unavailable'),
+                            ),
                           ),
                         )
                       : const SizedBox.shrink(),

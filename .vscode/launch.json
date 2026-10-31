@@ -1,0 +1,28 @@
+﻿{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Marsu Lost & Found",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define=SUPABASE_URL=${input:supabaseUrl}",
+        "--dart-define=SUPABASE_PUBLISHABLE_KEY=${input:supabasePublishableKey}"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "supabaseUrl",
+      "type": "promptString",
+      "description": "Supabase project URL"
+    },
+    {
+      "id": "supabasePublishableKey",
+      "type": "promptString",
+      "description": "Supabase publishable key",
+      "password": true
+    }
+  ]
+}

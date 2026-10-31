@@ -89,15 +89,23 @@ class ItemDetailsScreen extends StatelessWidget {
                       }
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            snapshot.data!,
-                            height: 220,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                const Text('Image could not be loaded'),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 240),
+                          switchInCurve: Curves.easeOut,
+                          child: ClipRRect(
+                            key: ValueKey(snapshot.data!),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              height: 260,
+                              width: double.infinity,
+                              color: const Color(0xFFF1F3F5),
+                              child: Image.network(
+                                snapshot.data!,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, _, _) =>
+                                    const Text('Image could not be loaded'),
+                              ),
+                            ),
                           ),
                         ),
                       );
@@ -274,7 +282,8 @@ class _FinderClaimCardState extends State<_FinderClaimCard> {
       final reason = status == ClaimStatus.rejected
           ? await _rejectionReason()
           : null;
-      if (status == ClaimStatus.rejected && (reason == null || reason.isEmpty)) {
+      if (status == ClaimStatus.rejected &&
+          (reason == null || reason.isEmpty)) {
         return;
       }
       await appState.reviewClaim(

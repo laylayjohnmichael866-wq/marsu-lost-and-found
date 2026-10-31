@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/validators/account_validators.dart';
 import '../../providers/app_state.dart';
+import '../../widgets/animated_reveal.dart';
 import '../main_navigation_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -141,169 +142,180 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.school,
-                    size: 50,
-                    color: AppColors.primaryMaroon,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'MarSU Lost & Found',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const Text(
-                    'Boac Campus',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 32),
-                  if (_registering)
-                    TextFormField(
-                      controller: _name,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(labelText: 'Full name'),
-                      validator: (value) => AccountValidators.requiredText(
-                        value,
-                        'Maglagay ng pangalan.',
+            child: AnimatedReveal(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AnimatedReveal(
+                      beginOffset: const Offset(0, 0.04),
+                      child: Image.asset(
+                        'assets/images/marsu_logo.png',
+                        width: 240,
+                        height: 120,
+                        fit: BoxFit.contain,
                       ),
                     ),
-                  if (_registering) const SizedBox(height: 12),
-                  if (_registering)
-                    TextFormField(
-                      controller: _studentNumber,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        labelText: 'Student Number',
-                      ),
-                      validator: AccountValidators.studentNumber,
-                    ),
-                  if (_registering) const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    validator: AccountValidators.email,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _password,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    validator: _registering
-                        ? AccountValidators.registrationPassword
-                        : AccountValidators.loginPassword,
-                  ),
-                  if (_registering) const SizedBox(height: 12),
-                  if (_registering)
-                    TextFormField(
-                      controller: _confirmPassword,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Confirm Password',
-                      ),
-                      validator: (value) => AccountValidators.confirmPassword(
-                        value,
-                        _password.text,
+                    const SizedBox(height: 12),
+                    const Text(
+                      'MarSU Lost & Found',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  if (_registering) const SizedBox(height: 12),
-                  if (_registering)
-                    TextFormField(
-                      controller: _college,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'College / Department',
-                      ),
-                      validator: (value) => AccountValidators.requiredText(
-                        value,
-                        'Ilagay ang college o department.',
-                      ),
+                    const Text(
+                      'Boac Campus',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textSecondary),
                     ),
-                  if (_registering) const SizedBox(height: 12),
-                  if (_registering)
-                    TextFormField(
-                      controller: _course,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        labelText: 'Course / Program',
-                      ),
-                      validator: (value) => AccountValidators.requiredText(
-                        value,
-                        'Ilagay ang course o program.',
-                      ),
-                    ),
-                  if (_registering) const SizedBox(height: 12),
-                  if (_registering)
-                    DropdownButtonFormField<String>(
-                      initialValue: _yearLevel,
-                      decoration: const InputDecoration(
-                        labelText: 'Year Level',
-                      ),
-                      hint: const Text('Select year level'),
-                      items: _yearLevels
-                          .map(
-                            (year) => DropdownMenuItem(
-                              value: year,
-                              child: Text(year),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _busy
-                          ? null
-                          : (value) => setState(() => _yearLevel = value),
-                      validator: (value) =>
-                          value == null ? 'Pumili ng year level.' : null,
-                    ),
-                  if (_registering) const SizedBox(height: 12),
-                  if (_registering)
-                    TextFormField(
-                      controller: _contactNumber,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(
-                        labelText: 'Contact Number',
-                      ),
-                      validator: AccountValidators.contactNumber,
-                    ),
-                  const SizedBox(height: 20),
-                  if (_errorMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        _errorMessage!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
+                    const SizedBox(height: 32),
+                    if (_registering)
+                      TextFormField(
+                        controller: _name,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Full name',
+                        ),
+                        validator: (value) => AccountValidators.requiredText(
+                          value,
+                          'Maglagay ng pangalan.',
                         ),
                       ),
+                    if (_registering) const SizedBox(height: 12),
+                    if (_registering)
+                      TextFormField(
+                        controller: _studentNumber,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          labelText: 'Student Number',
+                        ),
+                        validator: AccountValidators.studentNumber,
+                      ),
+                    if (_registering) const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _email,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(labelText: 'Email'),
+                      validator: AccountValidators.email,
                     ),
-                  ElevatedButton(
-                    onPressed: _busy ? null : _submit,
-                    child: Text(
-                      _busy
-                          ? 'Please wait...'
-                          : (_registering ? 'Create Account' : 'Sign In'),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _password,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      validator: _registering
+                          ? AccountValidators.registrationPassword
+                          : AccountValidators.loginPassword,
                     ),
-                  ),
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => setState(() {
-                            _registering = !_registering;
-                            _errorMessage = null;
-                            _confirmPassword.clear();
-                          }),
-                    child: Text(
-                      _registering
-                          ? 'Already have an account? Sign in'
-                          : 'Create a new account',
+                    if (_registering) const SizedBox(height: 12),
+                    if (_registering)
+                      TextFormField(
+                        controller: _confirmPassword,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm Password',
+                        ),
+                        validator: (value) => AccountValidators.confirmPassword(
+                          value,
+                          _password.text,
+                        ),
+                      ),
+                    if (_registering) const SizedBox(height: 12),
+                    if (_registering)
+                      TextFormField(
+                        controller: _college,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'College / Department',
+                        ),
+                        validator: (value) => AccountValidators.requiredText(
+                          value,
+                          'Ilagay ang college o department.',
+                        ),
+                      ),
+                    if (_registering) const SizedBox(height: 12),
+                    if (_registering)
+                      TextFormField(
+                        controller: _course,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Course / Program',
+                        ),
+                        validator: (value) => AccountValidators.requiredText(
+                          value,
+                          'Ilagay ang course o program.',
+                        ),
+                      ),
+                    if (_registering) const SizedBox(height: 12),
+                    if (_registering)
+                      DropdownButtonFormField<String>(
+                        initialValue: _yearLevel,
+                        decoration: const InputDecoration(
+                          labelText: 'Year Level',
+                        ),
+                        hint: const Text('Select year level'),
+                        items: _yearLevels
+                            .map(
+                              (year) => DropdownMenuItem(
+                                value: year,
+                                child: Text(year),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _busy
+                            ? null
+                            : (value) => setState(() => _yearLevel = value),
+                        validator: (value) =>
+                            value == null ? 'Pumili ng year level.' : null,
+                      ),
+                    if (_registering) const SizedBox(height: 12),
+                    if (_registering)
+                      TextFormField(
+                        controller: _contactNumber,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Contact Number',
+                        ),
+                        validator: AccountValidators.contactNumber,
+                      ),
+                    const SizedBox(height: 20),
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          _errorMessage!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ElevatedButton(
+                      onPressed: _busy ? null : _submit,
+                      child: Text(
+                        _busy
+                            ? 'Please wait...'
+                            : (_registering ? 'Create Account' : 'Sign In'),
+                      ),
                     ),
-                  ),
-                ],
+                    TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() {
+                              _registering = !_registering;
+                              _errorMessage = null;
+                              _confirmPassword.clear();
+                            }),
+                      child: Text(
+                        _registering
+                            ? 'Already have an account? Sign in'
+                            : 'Create a new account',
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
