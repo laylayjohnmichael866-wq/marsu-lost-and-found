@@ -8,6 +8,12 @@ import '../../providers/app_state.dart';
 import '../admin/admin_screen.dart';
 import '../auth/login_screen.dart';
 import 'edit_profile_screen.dart';
+import '../developer/gemini_test_screen.dart';
+
+const _enableGeminiTestScreen = bool.fromEnvironment(
+  'ENABLE_GEMINI_TEST_SCREEN',
+  defaultValue: true,
+);
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -131,6 +137,21 @@ class ProfileScreen extends StatelessWidget {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const AdminScreen()),
+                    ),
+                  ),
+                ],
+                if (_enableGeminiTestScreen) ...[
+                  const SizedBox(height: 12),
+                  ListTile(
+                    tileColor: Colors.red.shade50,
+                    leading: const Icon(Icons.science_outlined),
+                    title: const Text('Gemini Service Test'),
+                    subtitle: const Text('Developer-only'),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const GeminiTestScreen(),
+                      ),
                     ),
                   ),
                 ],
