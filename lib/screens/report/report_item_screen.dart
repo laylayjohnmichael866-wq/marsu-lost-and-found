@@ -105,10 +105,11 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
         imagePath: imagePath,
       );
       await appState.loadReports();
+      await appState.loadItemQrs();
       if (!mounted) return;
       final message = _type == ReportType.found && matches.isNotEmpty
-          ? 'Report submitted. ${matches.length} possible match${matches.length == 1 ? '' : 'es'} found for lost-item owners.'
-          : 'Report submitted successfully!';
+          ? 'Report submitted & QR code generated! ${matches.length} possible match${matches.length == 1 ? '' : 'es'} found.'
+          : 'Report submitted & Item QR code generated successfully!';
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
       if (widget.onSubmitted != null) {

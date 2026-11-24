@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/constants/app_colors.dart';
 import '../../models/claim_model.dart';
 import '../../models/item_report_model.dart';
 import '../../providers/app_state.dart';
 import '../../widgets/claim_submission_dialog.dart';
 import '../../widgets/item_status_badges.dart';
+import '../qr/item_qr_details_screen.dart';
+import '../qr/approved_claim_qr_screen.dart';
 
 class ItemDetailsScreen extends StatelessWidget {
   final ItemReport item;
@@ -133,6 +136,24 @@ class ItemDetailsScreen extends StatelessWidget {
           ),
           if (isOwner) ...[
             const SizedBox(height: 8),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryMaroon,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              icon: const Icon(Icons.qr_code_2),
+              label: const Text('View Item QR Tag'),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ItemQrDetailsScreen(item: displayItem),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
             _IncomingClaimsSection(
               claims: incomingClaims,
               canDecide: appState.isModerator,
@@ -144,20 +165,52 @@ class ItemDetailsScreen extends StatelessWidget {
             ...myClaims.map(
               (claim) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: StatusCard(
-                  backgroundColor: ClaimStatusDisplay.fromName(
-                    claim.status.name,
-                  ).color,
-                  margin: EdgeInsets.zero,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Your claim status'),
-                      ClaimStatusBadge(
-                        status: ClaimStatusDisplay.fromName(claim.status.name),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    StatusCard(
+                      backgroundColor: ClaimStatusDisplay.fromName(
+                        claim.status.name,
+                      ).color,
+                      margin: EdgeInsets.zero,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Your claim status'),
+                          ClaimStatusBadge(
+                            status: ClaimStatusDisplay.fromName(claim.status.name),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (claim.status == ClaimStatus.approved ||
+                        claim.status == ClaimStatus.completed) ...[
+                      const SizedBox(height: 6),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryMaroon,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.qr_code),
+                        label: Text(
+                          claim.status == ClaimStatus.completed
+                              ? 'View Handover Voucher'
+                              : 'Present Handover QR Voucher',
+                        ),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ApprovedClaimQrScreen(
+                                claim: claim,
+                                item: displayItem,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),

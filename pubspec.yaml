@@ -44,6 +44,10 @@ dependencies:
   firebase_storage: ^14.0.1
   firebase_auth: ^7.0.1
   supabase_flutter: ^2.18.3
+  qr_flutter: ^4.1.0
+  path_provider: ^2.1.6
+  share_plus: ^13.3.1
+  crypto: ^3.0.8
 
 dev_dependencies:
   flutter_test:

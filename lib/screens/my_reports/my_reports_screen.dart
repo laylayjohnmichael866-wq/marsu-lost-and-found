@@ -6,6 +6,8 @@ import '../../providers/app_state.dart';
 import '../../widgets/animated_reveal.dart';
 import '../../widgets/item_status_badges.dart';
 import '../../widgets/possible_matches_section.dart';
+import '../qr/my_item_qrs_screen.dart';
+import '../qr/item_qr_details_screen.dart';
 
 class MyReportsScreen extends StatelessWidget {
   const MyReportsScreen({super.key});
@@ -21,6 +23,16 @@ class MyReportsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('My Campus Items'),
         actions: [
+          IconButton(
+            tooltip: 'My Item QR Codes',
+            icon: const Icon(Icons.qr_code_2),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MyItemQrsScreen()),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Refresh reports',
             onPressed: () => appState.refreshData(),
@@ -86,23 +98,40 @@ class MyReportsScreen extends StatelessWidget {
                               ],
                             ),
                           ),
-                          trailing: PopupMenuButton<ItemStatus>(
-                            iconColor: Colors.white,
-                            onSelected: (s) =>
-                                appState.updateReportStatus(item.id, s),
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(
-                                value: ItemStatus.open,
-                                child: Text('Mark as Open'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.qr_code, color: Colors.white),
+                                tooltip: 'View Item QR Tag',
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ItemQrDetailsScreen(item: item),
+                                    ),
+                                  );
+                                },
                               ),
-                              if (appState.isModerator)
-                                const PopupMenuItem(
-                                  value: ItemStatus.returned,
-                                  child: Text('Mark as Returned'),
-                                ),
-                              const PopupMenuItem(
-                                value: ItemStatus.closed,
-                                child: Text('Close Report'),
+                              PopupMenuButton<ItemStatus>(
+                                iconColor: Colors.white,
+                                onSelected: (s) =>
+                                    appState.updateReportStatus(item.id, s),
+                                itemBuilder: (_) => [
+                                  const PopupMenuItem(
+                                    value: ItemStatus.open,
+                                    child: Text('Mark as Open'),
+                                  ),
+                                  if (appState.isModerator)
+                                    const PopupMenuItem(
+                                      value: ItemStatus.returned,
+                                      child: Text('Mark as Returned'),
+                                    ),
+                                  const PopupMenuItem(
+                                    value: ItemStatus.closed,
+                                    child: Text('Close Report'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

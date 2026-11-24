@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/constants/app_colors.dart';
 import '../../models/claim_model.dart';
 import '../../models/item_report_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/app_state.dart';
 import '../../services/role_service.dart';
 import '../../widgets/item_status_badges.dart';
+import 'admin_qr_management_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -95,6 +97,18 @@ class _AdminScreenState extends State<AdminScreen> {
         title: const Text('Campus Moderation Panel'),
         actions: [
           IconButton(
+            tooltip: 'QR System Management',
+            icon: const Icon(Icons.qr_code_2),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AdminQrManagementScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             tooltip: 'Refresh claims',
             onPressed: () => appState.refreshData(),
             icon: const Icon(Icons.refresh),
@@ -108,6 +122,33 @@ class _AdminScreenState extends State<AdminScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  Card(
+                    color: AppColors.primaryMaroon.withValues(alpha: 0.08),
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.qr_code_2,
+                        color: AppColors.primaryMaroon,
+                        size: 32,
+                      ),
+                      title: const Text(
+                        'QR System Management',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: const Text(
+                        'Manage item tags, verify claim vouchers & complete physical releases',
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AdminQrManagementScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   const Text(
                     'Submitted Ownership Claims',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
