@@ -209,4 +209,82 @@ void main() {
       expect(qrRev.status, equals(ClaimQrStatus.revoked));
     });
   });
+
+  group('Phase 3 QR Payload Parsing & Deduplication', () {
+    test('parsePayload distinguishes item, claim, rawToken, and unsupported QRs', () {
+      final itemParsed = QrService.parsePayload('marsu://item/rep-1?token=tok123');
+      expect(itemParsed.kind.name, equals('item'));
+      expect(itemParsed.isSupported, isTrue);
+      expect(itemParsed.token, equals('tok123'));
+      expect(itemParsed.referenceId, equals('rep-1'));
+
+      final claimParsed = QrService.parsePayload('marsu://claim/clm-1?token=tok456');
+      expect(claimParsed.kind.name, equals('claim'));
+      expect(claimParsed.isSupported, isTrue);
+      expect(claimParsed.token, equals('tok456'));
+      expect(claimParsed.referenceId, equals('clm-1'));
+
+      final rawParsed = QrService.parsePayload('a1b2c3d4e5f6');
+      expect(rawParsed.kind.name, equals('rawToken'));
+      expect(rawParsed.isSupported, isTrue);
+      expect(rawParsed.token, equals('a1b2c3d4e5f6'));
+
+      final missingToken = QrService.parsePayload('marsu://item/rep-1');
+      expect(missingToken.isSupported, isFalse);
+
+      final externalUrl = QrService.parsePayload('https://evil.example.com/qr');
+      expect(externalUrl.isSupported, isFalse);
+
+      final blank = QrService.parsePayload('   ');
+      expect(blank.isSupported, isFalse);
+    });
+
+    test('shouldIgnoreScan blocks duplicate scans during processing and cooldown', () {
+      final t0 = DateTime(2026, 11, 26, 12, 0, 0);
+
+      expect(
+        QrService.shouldIgnoreScan(
+          isProcessing: true,
+          candidatePayload: 'marsu://item/1?token=abc',
+          lastPayload: null,
+          lastScannedAt: null,
+          now: t0,
+        ),
+        isTrue,
+      );
+
+      expect(
+        QrService.shouldIgnoreScan(
+          isProcessing: false,
+          candidatePayload: 'marsu://item/1?token=abc',
+          lastPayload: 'marsu://item/1?token=abc',
+          lastScannedAt: t0,
+          now: t0.add(const Duration(seconds: 1)),
+        ),
+        isTrue,
+      );
+
+      expect(
+        QrService.shouldIgnoreScan(
+          isProcessing: false,
+          candidatePayload: 'marsu://item/1?token=abc',
+          lastPayload: 'marsu://item/1?token=abc',
+          lastScannedAt: t0,
+          now: t0.add(const Duration(seconds: 4)),
+        ),
+        isFalse,
+      );
+
+      expect(
+        QrService.shouldIgnoreScan(
+          isProcessing: false,
+          candidatePayload: 'marsu://item/2?token=def',
+          lastPayload: 'marsu://item/1?token=abc',
+          lastScannedAt: t0,
+          now: t0.add(const Duration(seconds: 1)),
+        ),
+        isFalse,
+      );
+    });
+  });
 }

@@ -8,6 +8,7 @@ import '../../providers/app_state.dart';
 import '../../widgets/animated_reveal.dart';
 import '../../widgets/item_status_badges.dart';
 import '../item_details/item_details_screen.dart';
+import '../qr/qr_scanner_screen.dart';
 import '../report/report_item_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -36,6 +37,16 @@ class HomeScreen extends StatelessWidget {
         ),
         title: const Text('MarSU Lost & Found'),
         actions: [
+          IconButton(
+            tooltip: 'Scan QR code',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const QrScannerScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.qr_code_scanner),
+          ),
           IconButton(
             tooltip: 'Refresh reports',
             onPressed: () => appState.refreshData(),
@@ -102,6 +113,19 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.qr_code_scanner, size: 18),
+              label: Text(
+                appState.isModerator
+                    ? 'Scan & Verify Item / Claim QR'
+                    : 'Scan Item or Claim QR Code',
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+              ),
             ),
             const SizedBox(height: 24),
             const Text(

@@ -11,6 +11,12 @@ class ItemReleaseLog {
   final Map<String, dynamic> metadata;
   final DateTime releasedAt;
 
+  // Optional joined display fields
+  final String? claimantName;
+  final String? releasedByName;
+  final String? itemName;
+  final String? category;
+
   const ItemReleaseLog({
     required this.id,
     this.qrCodeId,
@@ -23,9 +29,17 @@ class ItemReleaseLog {
     this.notes,
     this.metadata = const {},
     required this.releasedAt,
+    this.claimantName,
+    this.releasedByName,
+    this.itemName,
+    this.category,
   });
 
   factory ItemReleaseLog.fromMap(Map<String, dynamic> map) {
+    final metadata = map['metadata'] is Map
+        ? Map<String, dynamic>.from(map['metadata'] as Map)
+        : const <String, dynamic>{};
+
     return ItemReleaseLog(
       id: map['id']?.toString() ?? '',
       qrCodeId: map['qr_code_id']?.toString(),
@@ -36,11 +50,16 @@ class ItemReleaseLog {
       releaseMethod: map['release_method']?.toString() ?? 'qr_scan',
       releaseLocation: map['release_location']?.toString(),
       notes: map['notes']?.toString(),
-      metadata: map['metadata'] is Map
-          ? Map<String, dynamic>.from(map['metadata'] as Map)
-          : const {},
+      metadata: metadata,
       releasedAt: DateTime.tryParse(map['released_at']?.toString() ?? '') ??
           DateTime.now(),
+      claimantName: map['claimant_name']?.toString() ??
+          metadata['claimant_name']?.toString(),
+      releasedByName: map['released_by_name']?.toString() ??
+          metadata['admin_name']?.toString(),
+      itemName:
+          map['item_name']?.toString() ?? metadata['item_name']?.toString(),
+      category: map['category']?.toString(),
     );
   }
 

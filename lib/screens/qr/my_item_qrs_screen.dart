@@ -9,6 +9,7 @@ import '../../services/qr_service.dart';
 import '../../widgets/animated_reveal.dart';
 import '../../widgets/item_status_badges.dart';
 import 'item_qr_details_screen.dart';
+import 'qr_scanner_screen.dart';
 
 class MyItemQrsScreen extends StatefulWidget {
   const MyItemQrsScreen({super.key});
@@ -43,6 +44,16 @@ class _MyItemQrsScreenState extends State<MyItemQrsScreen> {
       appBar: AppBar(
         title: const Text('My Item QR Codes'),
         actions: [
+          IconButton(
+            tooltip: 'Scan QR code',
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Refresh QR codes',
             icon: const Icon(Icons.refresh),
@@ -220,17 +231,35 @@ class _ItemQrCard extends StatelessWidget {
                     icon: const Icon(Icons.share, size: 16),
                     label: const Text('Share Tag'),
                     onPressed: () async {
-                      final token = qr?.rawToken ??
+                      final messenger = ScaffoldMessenger.of(context);
+                      final cached = qr?.rawToken ??
                           await QrService.getCachedToken(
                             QrService.itemTokenKey(item.id),
-                          ) ??
-                          QrService.deriveItemToken(item.ownerId, item.id);
-                      final payload = QrService.buildItemPayload(item.id, token);
+                          );
+                      final payload = cached != null && cached.isNotEmpty
+                          ? QrService.buildItemPayload(item.id, cached)
+                          : (qr?.qrPayload.contains('token=') == true
+                              ? qr!.qrPayload
+                              : null);
+                      if (payload == null) {
+                        if (!context.mounted) return;
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Open "View QR Code" to regenerate this tag on this device before sharing.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
                       final bytes = await QrService.renderQrToPng(payload);
                       if (bytes != null) {
+                        final idPrefix = item.id.length >= 8
+                            ? item.id.substring(0, 8)
+                            : item.id;
                         await QrService.shareQrImage(
                           bytes: bytes,
-                          filename: 'marsu_item_${item.id.substring(0, 8)}.png',
+                          filename: 'marsu_item_$idPrefix.png',
                           subject: 'MarSU QR Tag: ${item.itemName}',
                           text: 'MarSU Property Tag: ${item.itemName}',
                         );

@@ -9,6 +9,7 @@ import '../../models/user_model.dart';
 import '../../providers/app_state.dart';
 import '../../services/role_service.dart';
 import '../../widgets/item_status_badges.dart';
+import '../qr/qr_scanner_screen.dart';
 import 'admin_qr_management_screen.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -97,6 +98,18 @@ class _AdminScreenState extends State<AdminScreen> {
         title: const Text('Campus Moderation Panel'),
         actions: [
           IconButton(
+            tooltip: 'Scan & Verify QR',
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const QrScannerScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             tooltip: 'QR System Management',
             icon: const Icon(Icons.qr_code_2),
             onPressed: () {
@@ -122,6 +135,33 @@ class _AdminScreenState extends State<AdminScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  Card(
+                    color: AppColors.primaryMaroon.withValues(alpha: 0.08),
+                    child: ListTile(
+                      leading: const Icon(
+                        Icons.qr_code_scanner,
+                        color: AppColors.primaryMaroon,
+                        size: 32,
+                      ),
+                      title: const Text(
+                        'Scan & Verify QR Code',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: const Text(
+                        'Verify claim vouchers at handover & record official item releases',
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const QrScannerScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Card(
                     color: AppColors.primaryMaroon.withValues(alpha: 0.08),
                     child: ListTile(

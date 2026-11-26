@@ -13,11 +13,22 @@ import '../models/claim_notification_model.dart';
 import '../models/claim_audit_model.dart';
 import '../models/item_qr_model.dart';
 import '../models/claim_release_qr_model.dart';
+import '../models/item_release_log_model.dart';
+import '../models/qr_verification_models.dart';
 import '../services/item_matching_service.dart';
 import '../services/role_service.dart';
 import '../services/qr_service.dart';
 
 class AppState extends ChangeNotifier {
+  AppState({
+    SupabaseClient? supabaseClient,
+    QrService? qrService,
+    UserModel? initialUser,
+  }) : _supabase = supabaseClient ?? Supabase.instance.client,
+       _currentUser = initialUser {
+    _qrService = qrService ?? QrService(_supabase);
+  }
+
   static const _profileColumns =
       'id,full_name,student_number,email,college,course,year_level,'
       'contact_number,created_at,updated_at';
@@ -30,9 +41,10 @@ class AppState extends ChangeNotifier {
   final List<ClaimAuditEntry> _auditEntries = [];
   final List<ItemQrCode> _itemQrs = [];
   final List<ClaimReleaseQrCode> _claimQrs = [];
-  final _supabase = Supabase.instance.client;
+  final List<ItemReleaseLog> _releaseLogs = [];
+  final SupabaseClient _supabase;
   late final RoleService _roleService = RoleService(_supabase);
-  late final QrService _qrService = QrService(_supabase);
+  late final QrService _qrService;
   StreamSubscription<AuthState>? _authSubscription;
   List<RoleAssignment> _roleAssignments = const [];
   bool _profileLoading = false;
@@ -53,6 +65,7 @@ class AppState extends ChangeNotifier {
       List.unmodifiable(_roleAssignments);
   List<ItemQrCode> get itemQrs => List.unmodifiable(_itemQrs);
   List<ClaimReleaseQrCode> get claimQrs => List.unmodifiable(_claimQrs);
+  List<ItemReleaseLog> get releaseLogs => List.unmodifiable(_releaseLogs);
   QrService get qrService => _qrService;
 
   Future<void> initialize() async {
@@ -348,6 +361,11 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     await _supabase.auth.signOut();
     _currentUser = null;
+    _items.clear();
+    _claims.clear();
+    _itemQrs.clear();
+    _claimQrs.clear();
+    _releaseLogs.clear();
     _notifications.clear();
     _auditEntries.clear();
     _roleAssignments = const [];
@@ -465,9 +483,9 @@ class AppState extends ChangeNotifier {
       for (final row in (rows as List)) {
         final map = Map<String, dynamic>.from(row as Map);
         final reportId = map['report_id']?.toString() ?? '';
-        final cachedToken =
-            await QrService.getCachedToken(QrService.itemTokenKey(reportId)) ??
-                QrService.deriveItemToken(user.id, reportId);
+        final cachedToken = await QrService.getCachedToken(
+          QrService.itemTokenKey(reportId),
+        );
         list.add(ItemQrCode.fromMap(map, rawToken: cachedToken));
       }
       _itemQrs
@@ -475,29 +493,7 @@ class AppState extends ChangeNotifier {
         ..addAll(list);
       notifyListeners();
     } catch (_) {
-      // If table is pending remote deployment, build local representations
-      if (_itemQrs.isEmpty && _items.isNotEmpty) {
-        for (final item in _items.where((i) => i.ownerId == user.id)) {
-          final token =
-              await QrService.getCachedToken(QrService.itemTokenKey(item.id)) ??
-                  QrService.deriveItemToken(user.id, item.id);
-          _itemQrs.add(ItemQrCode(
-            id: item.id,
-            reportId: item.id,
-            tokenHash: QrService.hashToken(token),
-            qrPayload: QrService.buildItemPayload(item.id, token),
-            isActive: item.status != ItemStatus.closed,
-            createdAt: item.createdAt,
-            updatedAt: item.createdAt,
-            rawToken: token,
-            itemName: item.itemName,
-            category: item.category,
-            reportType: item.reportType.name,
-            generalLocation: item.generalLocation,
-          ));
-        }
-        notifyListeners();
-      }
+      // Graceful no-op if QR table migration has not been applied yet.
     }
   }
 
@@ -544,127 +540,133 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<ItemQrCode?> generateItemQr(String reportId) async {
-    // Avoid duplicate generation when the user refreshes or retries
-    final existingIndex =
-        _itemQrs.indexWhere((q) => q.reportId == reportId && q.isActive);
-    if (existingIndex != -1) {
-      return _itemQrs[existingIndex];
+  Future<ItemQrCode> generateItemQr(
+    String reportId, {
+    bool forceRegenerate = false,
+  }) async {
+    if (!forceRegenerate) {
+      final existingIndex = _itemQrs.indexWhere(
+        (q) =>
+            q.reportId == reportId &&
+            q.isActive &&
+            ((q.rawToken?.isNotEmpty ?? false) ||
+                q.qrPayload.contains('token=')),
+      );
+      if (existingIndex != -1) {
+        return _itemQrs[existingIndex];
+      }
     }
 
-    try {
-      final qr = await _qrService.generateItemQr(reportId: reportId);
-      final index = _itemQrs.indexWhere((q) => q.reportId == reportId);
-      if (index != -1) {
-        _itemQrs[index] = qr;
-      } else {
-        _itemQrs.insert(0, qr);
-      }
-      notifyListeners();
-      return qr;
-    } catch (_) {
-      // Deterministic fallback if remote table is pending migration
-      final ownerId = _currentUser?.id ?? '';
-      final fallbackToken = QrService.deriveItemToken(ownerId, reportId);
-      final report = _items.firstWhere(
-        (i) => i.id == reportId,
-        orElse: () => _items.first,
-      );
-      final fallbackQr = ItemQrCode(
-        id: _uuid.v4(),
-        reportId: reportId,
-        tokenHash: QrService.hashToken(fallbackToken),
-        qrPayload: QrService.buildItemPayload(reportId, fallbackToken),
-        isActive: true,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        rawToken: fallbackToken,
-        itemName: report.itemName,
-        category: report.category,
-        reportType: report.reportType.name,
-        generalLocation: report.generalLocation,
-      );
-      await QrService.cacheToken(QrService.itemTokenKey(reportId), fallbackToken);
-      _itemQrs.insert(0, fallbackQr);
-      notifyListeners();
-      return fallbackQr;
+    final qr = await _qrService.generateItemQr(reportId: reportId);
+    final index = _itemQrs.indexWhere((q) => q.reportId == reportId);
+    if (index != -1) {
+      _itemQrs[index] = qr;
+    } else {
+      _itemQrs.insert(0, qr);
     }
+    notifyListeners();
+    return qr;
   }
 
   Future<ClaimReleaseQrCode> generateClaimReleaseQr(
     String claimId, {
     int validityHours = 48,
   }) async {
-    try {
-      final qr = await _qrService.generateClaimReleaseQr(
-        claimId: claimId,
-        validityHours: validityHours,
-      );
-      final index = _claimQrs.indexWhere((q) => q.claimId == claimId);
-      if (index != -1) {
-        _claimQrs[index] = qr;
-      } else {
-        _claimQrs.insert(0, qr);
-      }
-      notifyListeners();
-      return qr;
-    } catch (_) {
-      final token = QrService.generateSecureToken();
-      final expires = DateTime.now().add(Duration(hours: validityHours));
-      final claim = _claims.firstWhere(
-        (c) => c.id == claimId,
-        orElse: () => _claims.first,
-      );
-      final report = _items.firstWhere(
-        (i) => i.id == claim.reportId,
-        orElse: () => _items.first,
-      );
-      final qr = ClaimReleaseQrCode(
-        id: _uuid.v4(),
-        claimId: claimId,
-        reportId: claim.reportId,
-        claimantId: _currentUser?.id ?? '',
-        tokenHash: QrService.hashToken(token),
-        status: ClaimQrStatus.active,
-        expiresAt: expires,
-        createdAt: DateTime.now(),
-        rawToken: token,
-        claimantName: _currentUser?.fullName,
-        itemName: report.itemName,
-        category: report.category,
-        claimStatus: 'approved',
-      );
-      await QrService.cacheToken(QrService.claimTokenKey(claimId), token);
-      final index = _claimQrs.indexWhere((q) => q.claimId == claimId);
-      if (index != -1) {
-        _claimQrs[index] = qr;
-      } else {
-        _claimQrs.insert(0, qr);
-      }
-      notifyListeners();
-      return qr;
+    final qr = await _qrService.generateClaimReleaseQr(
+      claimId: claimId,
+      validityHours: validityHours,
+    );
+    final index = _claimQrs.indexWhere((q) => q.claimId == claimId);
+    if (index != -1) {
+      _claimQrs[index] = qr;
+    } else {
+      _claimQrs.insert(0, qr);
     }
+    notifyListeners();
+    return qr;
   }
 
-  Future<void> revokeItemQr(String qrId, {String? reason}) async {
+  Future<ItemQrVerificationResult> verifyScannedItemQr(
+    String rawPayload,
+  ) async {
+    if (_currentUser == null) {
+      throw const AuthException('You must be signed in to verify item QR codes.');
+    }
+    return _qrService.verifyItemQrTyped(rawPayload);
+  }
+
+  Future<ClaimQrVerificationResult> verifyScannedClaimQr(
+    String rawPayload,
+  ) async {
+    if (_currentUser == null) {
+      throw const AuthException(
+        'You must be signed in to verify claim QR codes.',
+      );
+    }
+    return _qrService.verifyClaimQrTyped(rawPayload);
+  }
+
+  Future<ItemReleaseReceipt> redeemScannedClaimQr({
+    required String rawPayload,
+    required bool confirmed,
+    String? releaseLocation,
+    String? notes,
+  }) async {
+    if (_currentUser == null) {
+      throw const AuthException('You must be signed in to release items.');
+    }
+    if (!isModerator) {
+      throw const AuthException(
+        'Only authorized moderators or administrators can release items.',
+      );
+    }
+    final receipt = await _qrService.redeemVerifiedClaimQr(
+      tokenOrPayload: rawPayload,
+      confirmed: confirmed,
+      releaseLocation: releaseLocation,
+      notes: notes,
+    );
+    if (_supabase.auth.currentSession != null) {
+      await refreshData();
+      await loadReleaseLogs();
+    }
+    return receipt;
+  }
+
+  Future<void> loadReleaseLogs() async {
+    if (!isModerator) return;
     try {
-      await _qrService.revokeItemQr(qrId, reason: reason);
+      final logs = await _qrService.adminListReleaseLogs();
+      _releaseLogs
+        ..clear()
+        ..addAll(logs);
+      notifyListeners();
     } catch (_) {}
+  }
+
+  Future<void> revokeItemQr(
+    String qrId, {
+    String? reason,
+    bool asAdmin = false,
+  }) async {
+    if (asAdmin) {
+      await _qrService.adminRevokeItemQr(qrId, reason: reason);
+    } else {
+      await _qrService.revokeItemQr(qrId, reason: reason);
+    }
     final index = _itemQrs.indexWhere((q) => q.id == qrId);
     if (index != -1) {
       _itemQrs[index] = _itemQrs[index].copyWith(
         isActive: false,
         revokedAt: DateTime.now(),
-        revocationReason: reason ?? 'Revoked by owner',
+        revocationReason: reason ?? (asAdmin ? 'Revoked by administrator' : 'Revoked by owner'),
       );
       notifyListeners();
     }
   }
 
   Future<void> revokeClaimQr(String qrId, {String? reason}) async {
-    try {
-      await _qrService.adminRevokeClaimQr(qrId, reason: reason);
-    } catch (_) {}
+    await _qrService.adminRevokeClaimQr(qrId, reason: reason);
     final index = _claimQrs.indexWhere((q) => q.id == qrId);
     if (index != -1) {
       _claimQrs[index] = _claimQrs[index].copyWith(
@@ -914,6 +916,11 @@ class AppState extends ChangeNotifier {
       params: {'p_claim_id': claimId},
     );
     await refreshData();
+  }
+
+  @visibleForTesting
+  void seedClaimQrForTesting(ClaimReleaseQrCode qr) {
+    _claimQrs.add(qr);
   }
 
   List<ClaimModel> claimsForReport(String reportId) {

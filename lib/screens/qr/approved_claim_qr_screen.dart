@@ -74,12 +74,14 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
   }
 
   Future<void> _downloadVoucher(ClaimReleaseQrCode qr) async {
+    final rawToken = qr.rawToken;
+    if (rawToken == null || rawToken.isEmpty) return;
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final bytes = await QrService.captureBoundaryToPng(_voucherKey) ??
           await QrService.renderQrToPng(
-            QrService.buildClaimPayload(widget.claim.id, qr.rawToken ?? qr.tokenHash),
+            QrService.buildClaimPayload(widget.claim.id, rawToken),
           );
       if (bytes == null) {
         messenger.showSnackBar(
@@ -87,8 +89,10 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
         );
         return;
       }
-      final filename =
-          'marsu_claim_voucher_${widget.claim.id.substring(0, 8)}.png';
+      final idPrefix = widget.claim.id.length >= 8
+          ? widget.claim.id.substring(0, 8)
+          : widget.claim.id;
+      final filename = 'marsu_claim_voucher_$idPrefix.png';
       final path = await QrService.saveQrImageToFile(
         bytes: bytes,
         filename: filename,
@@ -118,12 +122,14 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
   }
 
   Future<void> _shareVoucher(ClaimReleaseQrCode qr) async {
+    final rawToken = qr.rawToken;
+    if (rawToken == null || rawToken.isEmpty) return;
     setState(() => _sharing = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final bytes = await QrService.captureBoundaryToPng(_voucherKey) ??
           await QrService.renderQrToPng(
-            QrService.buildClaimPayload(widget.claim.id, qr.rawToken ?? qr.tokenHash),
+            QrService.buildClaimPayload(widget.claim.id, rawToken),
           );
       if (bytes == null) {
         messenger.showSnackBar(
@@ -131,9 +137,12 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
         );
         return;
       }
+      final idPrefix = widget.claim.id.length >= 8
+          ? widget.claim.id.substring(0, 8)
+          : widget.claim.id;
       await QrService.shareQrImage(
         bytes: bytes,
-        filename: 'marsu_claim_${widget.claim.id.substring(0, 8)}.png',
+        filename: 'marsu_claim_$idPrefix.png',
         subject: 'MarSU Claim Release Voucher: ${widget.item.itemName}',
         text: 'MarSU Claim Release Voucher for ${widget.item.itemName}. Claimant: ${widget.claim.claimantName}',
       );
@@ -157,7 +166,9 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
         (activeQr?.isRedeemed ?? false);
     final isRevoked = activeQr?.status == ClaimQrStatus.revoked;
     final isExpired = activeQr?.isExpired ?? false;
+    final hasRawToken = activeQr?.rawToken?.isNotEmpty == true;
     final isValid = activeQr != null && activeQr.isValid && !isHandoverCompleted;
+    final canDisplayQrMatrix = isValid && hasRawToken;
 
     return Scaffold(
       appBar: AppBar(
@@ -298,13 +309,21 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
                             subtitle:
                                 'This QR code expired on ${activeQr != null ? dateFormat.format(activeQr.expiresAt) : "date"}. Tap below to generate a new active voucher.',
                           )
-                        else if (activeQr != null)
+                        else if (activeQr != null && !hasRawToken)
+                          const _StateBanner(
+                            icon: Icons.phonelink_lock,
+                            color: AppColors.warning,
+                            title: 'Voucher Token Not On This Device',
+                            subtitle:
+                                'For security, raw QR tokens are never stored on the server. Tap below to issue a new handover QR voucher on this device.',
+                          )
+                        else if (activeQr != null && hasRawToken)
                           Column(
                             children: [
                               QrImageView(
                                 data: QrService.buildClaimPayload(
                                   widget.claim.id,
-                                  activeQr.rawToken ?? activeQr.tokenHash,
+                                  activeQr.rawToken!,
                                 ),
                                 version: QrVersions.auto,
                                 size: 220,
@@ -391,7 +410,7 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
                 const SizedBox(height: 16),
 
                 // Action Buttons
-                if (isValid) ...[
+                if (canDisplayQrMatrix) ...[
                   Row(
                     children: [
                       Expanded(
@@ -434,11 +453,18 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
                       ),
                     ],
                   ),
-                ] else if (isExpired && widget.claim.status == ClaimStatus.approved) ...[
+                ] else if ((isExpired || !hasRawToken) &&
+                    !isHandoverCompleted &&
+                    !isRevoked &&
+                    widget.claim.status == ClaimStatus.approved) ...[
                   ElevatedButton.icon(
                     onPressed: _loading ? null : _regenerateQr,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Generate New Handover QR Voucher'),
+                    label: Text(
+                      isExpired
+                          ? 'Generate New Handover QR Voucher'
+                          : 'Issue Handover QR On This Device',
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryMaroon,
                       foregroundColor: Colors.white,
@@ -494,7 +520,7 @@ class _ApprovedClaimQrScreenState extends State<ApprovedClaimQrScreen> {
                           ),
                         const SizedBox(height: 8),
                         Text(
-                          'Token Hash: ${activeQr?.tokenHash.isNotEmpty == true ? "${activeQr!.tokenHash.substring(0, 16)}..." : "Encrypted"}',
+                          'Token Hash: ${activeQr != null && activeQr.tokenHash.length >= 16 ? "${activeQr.tokenHash.substring(0, 16)}..." : "Encrypted"}',
                           style: const TextStyle(
                             fontSize: 11,
                             fontFamily: 'monospace',

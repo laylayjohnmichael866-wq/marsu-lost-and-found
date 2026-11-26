@@ -15,6 +15,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/claim_release_qr_model.dart';
 import '../models/item_qr_model.dart';
+import '../models/item_release_log_model.dart';
+import '../models/qr_verification_models.dart';
 
 class QrService {
   final SupabaseClient _supabase;
@@ -39,9 +41,98 @@ class QrService {
     return 'marsu://item/$reportId?token=$token';
   }
 
+  /// Builds standard non-secret database reference for item tags.
+  static String buildItemReferencePayload(String reportId) {
+    return 'marsu://item/$reportId';
+  }
+
   /// Builds standard deep-link payload for claim release vouchers.
   static String buildClaimPayload(String claimId, String token) {
     return 'marsu://claim/$claimId?token=$token';
+  }
+
+  /// Parses a scanned QR string into a typed MarSU payload without trusting client metadata.
+  static ParsedQrPayload parsePayload(String payload) {
+    final trimmed = payload.trim();
+    if (trimmed.isEmpty) {
+      return ParsedQrPayload(
+        kind: QrPayloadKind.unsupported,
+        rawPayload: trimmed,
+        token: '',
+      );
+    }
+
+    if (trimmed.startsWith('marsu://')) {
+      final uri = Uri.tryParse(trimmed);
+      final token = uri?.queryParameters['token']?.trim() ?? '';
+      if (uri == null || token.isEmpty) {
+        return ParsedQrPayload(
+          kind: QrPayloadKind.unsupported,
+          rawPayload: trimmed,
+          token: '',
+        );
+      }
+
+      final referenceId =
+          uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
+      if (uri.host == 'item') {
+        return ParsedQrPayload(
+          kind: QrPayloadKind.item,
+          rawPayload: trimmed,
+          token: token,
+          referenceId: referenceId,
+        );
+      }
+      if (uri.host == 'claim') {
+        return ParsedQrPayload(
+          kind: QrPayloadKind.claim,
+          rawPayload: trimmed,
+          token: token,
+          referenceId: referenceId,
+        );
+      }
+      return ParsedQrPayload(
+        kind: QrPayloadKind.unsupported,
+        rawPayload: trimmed,
+        token: '',
+      );
+    }
+
+    // Reject arbitrary external URLs or multi-line/whitespace payloads
+    if (trimmed.contains('://') || RegExp(r'\s').hasMatch(trimmed)) {
+      return ParsedQrPayload(
+        kind: QrPayloadKind.unsupported,
+        rawPayload: trimmed,
+        token: '',
+      );
+    }
+
+    return ParsedQrPayload(
+      kind: QrPayloadKind.rawToken,
+      rawPayload: trimmed,
+      token: trimmed,
+    );
+  }
+
+  /// Prevents repeated scan events while processing or within a cooldown window.
+  static bool shouldIgnoreScan({
+    required bool isProcessing,
+    required String candidatePayload,
+    required String? lastPayload,
+    required DateTime? lastScannedAt,
+    DateTime? now,
+    Duration cooldown = const Duration(seconds: 3),
+  }) {
+    if (isProcessing) return true;
+    final trimmed = candidatePayload.trim();
+    if (trimmed.isEmpty) return true;
+    if (lastPayload == trimmed && lastScannedAt != null) {
+      final current = now ?? DateTime.now();
+      if (current.difference(lastScannedAt) < cooldown) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Extracts the raw token from a deep-link URI or returns the raw string.
@@ -50,7 +141,7 @@ class QrService {
     if (trimmed.startsWith('marsu://') && trimmed.contains('token=')) {
       final uri = Uri.tryParse(trimmed);
       if (uri != null && uri.queryParameters.containsKey('token')) {
-        return uri.queryParameters['token']!;
+        return uri.queryParameters['token']!.trim();
       }
     }
     return trimmed;
@@ -95,18 +186,18 @@ class QrService {
   }
 
   // --------------------------------------------------------------------------
-  // Supabase Backend QR Operations (Phase 3)
+  // Supabase Backend QR Operations
   // --------------------------------------------------------------------------
 
   /// Generates and persists an item QR code via Supabase RPC.
-  /// Stores ONLY the cryptographic SHA-256 hash.
+  /// Stores ONLY the cryptographic SHA-256 hash and non-secret reference payload in DB.
   Future<ItemQrCode> generateItemQr({
     required String reportId,
     String? customToken,
   }) async {
     final rawToken = customToken ?? generateSecureToken();
     final tokenHash = hashToken(rawToken);
-    final payload = buildItemPayload(reportId, rawToken);
+    final referencePayload = buildItemReferencePayload(reportId);
 
     // Call Supabase RPC generate_item_qr
     final response = await _supabase.rpc(
@@ -114,8 +205,8 @@ class QrService {
       params: {
         'p_report_id': reportId,
         'p_token_hash': tokenHash,
-        'p_qr_payload': payload,
-        'p_metadata': {'version': 1, 'client': 'flutter_mobile'},
+        'p_qr_payload': referencePayload,
+        'p_metadata': {'version': 2, 'client': 'flutter_mobile'},
       },
     );
 
@@ -134,6 +225,14 @@ class QrService {
       params: {'p_token': token},
     );
     return Map<String, dynamic>.from(response as Map);
+  }
+
+  /// Typed item QR verification helper.
+  Future<ItemQrVerificationResult> verifyItemQrTyped(
+    String tokenOrPayload,
+  ) async {
+    final map = await verifyItemQr(tokenOrPayload);
+    return ItemQrVerificationResult.fromMap(map);
   }
 
   /// Revokes an item QR code.
@@ -186,6 +285,35 @@ class QrService {
     return Map<String, dynamic>.from(response as Map);
   }
 
+  /// Typed claim QR verification helper.
+  Future<ClaimQrVerificationResult> verifyClaimQrTyped(
+    String tokenOrPayload,
+  ) async {
+    final map = await verifyClaimQr(tokenOrPayload);
+    return ClaimQrVerificationResult.fromMap(map);
+  }
+
+  /// Atomically redeems a verified claim QR token as an authorized administrator/moderator.
+  /// Never trusts client-supplied claim IDs or metadata; verifies token hash server-side.
+  Future<ItemReleaseReceipt> redeemVerifiedClaimQr({
+    required String tokenOrPayload,
+    required bool confirmed,
+    String? releaseLocation,
+    String? notes,
+  }) async {
+    final token = extractToken(tokenOrPayload);
+    final response = await _supabase.rpc(
+      'redeem_verified_claim_qr',
+      params: {
+        'p_token': token,
+        'p_confirmed': confirmed,
+        'p_release_location': releaseLocation,
+        'p_notes': notes,
+      },
+    );
+    return ItemReleaseReceipt.fromMap(Map<String, dynamic>.from(response as Map));
+  }
+
   /// Administrator atomic item release with explicit confirmation.
   Future<Map<String, dynamic>> adminReleaseItem({
     required String claimId,
@@ -221,7 +349,10 @@ class QrService {
   }
 
   /// Administrator revocation of claim release QR code.
-  Future<ClaimReleaseQrCode> adminRevokeClaimQr(String qrId, {String? reason}) async {
+  Future<ClaimReleaseQrCode> adminRevokeClaimQr(
+    String qrId, {
+    String? reason,
+  }) async {
     final response = await _supabase.rpc(
       'admin_revoke_claim_qr',
       params: {
@@ -237,7 +368,9 @@ class QrService {
   Future<List<ItemQrCode>> adminListItemQrs() async {
     final response = await _supabase.rpc('admin_list_item_qr_codes');
     final list = response as List;
-    return list.map((item) => ItemQrCode.fromMap(Map<String, dynamic>.from(item as Map))).toList();
+    return list
+        .map((item) => ItemQrCode.fromMap(Map<String, dynamic>.from(item as Map)))
+        .toList();
   }
 
   /// Administrator query of all claim release QR codes.
@@ -245,7 +378,23 @@ class QrService {
     final response = await _supabase.rpc('admin_list_claim_qr_codes');
     final list = response as List;
     return list
-        .map((item) => ClaimReleaseQrCode.fromMap(Map<String, dynamic>.from(item as Map)))
+        .map(
+          (item) => ClaimReleaseQrCode.fromMap(
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
+        .toList();
+  }
+
+  /// Administrator query of release transaction history.
+  Future<List<ItemReleaseLog>> adminListReleaseLogs() async {
+    final response = await _supabase.rpc('admin_list_release_logs');
+    final list = response as List;
+    return list
+        .map(
+          (item) =>
+              ItemReleaseLog.fromMap(Map<String, dynamic>.from(item as Map)),
+        )
         .toList();
   }
 
@@ -300,7 +449,8 @@ class QrService {
       if (Platform.isAndroid || Platform.isIOS) {
         dir = await getApplicationDocumentsDirectory();
       } else {
-        dir = (await getDownloadsDirectory()) ?? await getApplicationDocumentsDirectory();
+        dir = (await getDownloadsDirectory()) ??
+            await getApplicationDocumentsDirectory();
       }
       final file = File('${dir.path}/$filename');
       await file.writeAsBytes(bytes);

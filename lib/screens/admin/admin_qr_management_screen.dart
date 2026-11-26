@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/claim_release_qr_model.dart';
 import '../../models/item_qr_model.dart';
+import '../../models/item_release_log_model.dart';
 import '../../providers/app_state.dart';
+import '../qr/qr_scanner_screen.dart';
 
 class AdminQrManagementScreen extends StatefulWidget {
   const AdminQrManagementScreen({super.key});
@@ -15,10 +17,11 @@ class AdminQrManagementScreen extends StatefulWidget {
 }
 
 class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
-  int _selectedTab = 0; // 0 = Item QRs, 1 = Claim QRs
+  int _selectedTab = 0; // 0 = Item QRs, 1 = Claim QRs, 2 = Release History
   bool _loading = false;
   List<ItemQrCode> _itemQrs = [];
   List<ClaimReleaseQrCode> _claimQrs = [];
+  List<ItemReleaseLog> _releaseLogs = [];
   String? _errorMessage;
 
   @override
@@ -36,10 +39,15 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
     try {
       final items = await appState.qrService.adminListItemQrs();
       final claims = await appState.qrService.adminListClaimQrs();
+      List<ItemReleaseLog> logs = const [];
+      try {
+        logs = await appState.qrService.adminListReleaseLogs();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _itemQrs = items;
         _claimQrs = claims;
+        _releaseLogs = logs;
       });
     } catch (e) {
       // Fallback to loaded QRs from appState if direct RPC unavailable
@@ -47,6 +55,7 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
       setState(() {
         _itemQrs = appState.itemQrs;
         _claimQrs = appState.claimQrs;
+        _releaseLogs = appState.releaseLogs;
         _errorMessage = 'Note: Showing cached QR records ($e)';
       });
     } finally {
@@ -94,11 +103,11 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
     final reason = reasonController.text.trim();
     try {
       final appState = context.read<AppState>();
-      await appState.qrService.adminRevokeItemQr(
+      await appState.revokeItemQr(
         qr.id,
         reason: reason.isNotEmpty ? reason : 'Revoked by administrator',
+        asAdmin: true,
       );
-      await appState.revokeItemQr(qr.id, reason: reason);
       messenger.showSnackBar(
         const SnackBar(content: Text('Item QR code revoked successfully.')),
       );
@@ -150,11 +159,10 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
     final reason = reasonController.text.trim();
     try {
       final appState = context.read<AppState>();
-      await appState.qrService.adminRevokeClaimQr(
+      await appState.revokeClaimQr(
         qr.id,
         reason: reason.isNotEmpty ? reason : 'Revoked by administrator',
       );
-      await appState.revokeClaimQr(qr.id, reason: reason);
       messenger.showSnackBar(
         const SnackBar(content: Text('Claim QR voucher revoked.')),
       );
@@ -264,6 +272,19 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
         title: const Text('Administrator QR Management'),
         actions: [
           IconButton(
+            tooltip: 'Scan & verify QR',
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+              );
+              if (mounted) {
+                _loadAdminData();
+              }
+            },
+          ),
+          IconButton(
             tooltip: 'Refresh records',
             icon: const Icon(Icons.refresh),
             onPressed: _loadAdminData,
@@ -280,12 +301,17 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
                 ButtonSegment(
                   value: 0,
                   icon: const Icon(Icons.qr_code_2),
-                  label: Text('Item QR Tags (${_itemQrs.length})'),
+                  label: Text('Items (${_itemQrs.length})'),
                 ),
                 ButtonSegment(
                   value: 1,
                   icon: const Icon(Icons.verified),
-                  label: Text('Claim QR Vouchers (${_claimQrs.length})'),
+                  label: Text('Claims (${_claimQrs.length})'),
+                ),
+                ButtonSegment(
+                  value: 2,
+                  icon: const Icon(Icons.history),
+                  label: Text('History (${_releaseLogs.length})'),
                 ),
               ],
               selected: {_selectedTab},
@@ -310,7 +336,9 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : _selectedTab == 0
                     ? _buildItemQrsList()
-                    : _buildClaimQrsList(),
+                    : _selectedTab == 1
+                        ? _buildClaimQrsList()
+                        : _buildReleaseLogsList(),
           ),
         ],
       ),
@@ -340,7 +368,8 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        qr.itemName ?? 'Report: ${qr.reportId.substring(0, 8)}',
+                        qr.itemName ??
+                            'Report: ${qr.reportId.length >= 8 ? qr.reportId.substring(0, 8) : qr.reportId}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -383,7 +412,7 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
                     ),
                   ),
                 Text(
-                  'Hash: ${qr.tokenHash.substring(0, 16)}...',
+                  'Hash: ${qr.tokenHash.length >= 16 ? "${qr.tokenHash.substring(0, 16)}..." : qr.tokenHash}',
                   style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 11,
@@ -456,7 +485,7 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Claimant: ${qr.claimantName ?? qr.claimantId.substring(0, 8)}',
+                        'Claimant: ${qr.claimantName ?? (qr.claimantId.length >= 8 ? qr.claimantId.substring(0, 8) : qr.claimantId)}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -520,6 +549,82 @@ class _AdminQrManagementScreenState extends State<AdminQrManagementScreen> {
                       ),
                     ],
                   ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildReleaseLogsList() {
+    if (_releaseLogs.isEmpty) {
+      return const Center(child: Text('No item release transactions logged yet.'));
+    }
+    final dateFormat = DateFormat('MM/dd/yyyy HH:mm');
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _releaseLogs.length,
+      itemBuilder: (context, index) {
+        final log = _releaseLogs[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        log.itemName ?? 'Item Release',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    _StatusBadge(
+                      label: log.releaseMethod.toUpperCase(),
+                      color: AppColors.success,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Claimant: ${log.claimantName ?? log.claimantId}',
+                  style: const TextStyle(fontSize: 13),
+                ),
+                Text(
+                  'Verified By: ${log.releasedByName ?? log.releasedBy}',
+                  style: const TextStyle(fontSize: 13),
+                ),
+                if (log.releaseLocation?.isNotEmpty == true)
+                  Text(
+                    'Location: ${log.releaseLocation}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                if (log.notes?.isNotEmpty == true)
+                  Text(
+                    'Notes: ${log.notes}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                Text(
+                  'Released: ${dateFormat.format(log.releasedAt.toLocal())}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
             ),

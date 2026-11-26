@@ -28,21 +28,59 @@ class _ItemQrDetailsScreenState extends State<ItemQrDetailsScreen> {
   bool _saving = false;
   bool _sharing = false;
   bool _revoking = false;
+  bool _generating = false;
+
+  String? _renderableQrPayload(ItemQrCode? qr) {
+    if (qr == null) return null;
+    if (qr.rawToken != null && qr.rawToken!.isNotEmpty) {
+      return QrService.buildItemPayload(widget.item.id, qr.rawToken!);
+    }
+    if (qr.qrPayload.contains('token=')) {
+      return qr.qrPayload;
+    }
+    return null;
+  }
+
+  Future<void> _generateOrRefreshQr() async {
+    setState(() => _generating = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await context
+          .read<AppState>()
+          .generateItemQr(widget.item.id, forceRegenerate: true);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Item QR tag generated on this device.')),
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Could not generate QR tag: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
 
   Future<void> _downloadQr(ItemQrCode qr) async {
+    final payload = _renderableQrPayload(qr);
+    if (payload == null) return;
     setState(() => _saving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final bytes = await QrService.captureBoundaryToPng(_qrCardKey) ??
-          await QrService.renderQrToPng(qr.qrPayload);
+          await QrService.renderQrToPng(payload);
       if (bytes == null) {
         messenger.showSnackBar(
           const SnackBar(content: Text('Failed to generate QR image.')),
         );
         return;
       }
-      final filename =
-          'marsu_qr_${widget.item.id.substring(0, 8)}.png';
+      final idPrefix = widget.item.id.length >= 8
+          ? widget.item.id.substring(0, 8)
+          : widget.item.id;
+      final filename = 'marsu_qr_$idPrefix.png';
       final savedPath = await QrService.saveQrImageToFile(
         bytes: bytes,
         filename: filename,
@@ -72,20 +110,25 @@ class _ItemQrDetailsScreenState extends State<ItemQrDetailsScreen> {
   }
 
   Future<void> _shareQr(ItemQrCode qr) async {
+    final payload = _renderableQrPayload(qr);
+    if (payload == null) return;
     setState(() => _sharing = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final bytes = await QrService.captureBoundaryToPng(_qrCardKey) ??
-          await QrService.renderQrToPng(qr.qrPayload);
+          await QrService.renderQrToPng(payload);
       if (bytes == null) {
         messenger.showSnackBar(
           const SnackBar(content: Text('Failed to generate QR image for sharing.')),
         );
         return;
       }
+      final idPrefix = widget.item.id.length >= 8
+          ? widget.item.id.substring(0, 8)
+          : widget.item.id;
       await QrService.shareQrImage(
         bytes: bytes,
-        filename: 'marsu_item_${widget.item.id.substring(0, 8)}.png',
+        filename: 'marsu_item_$idPrefix.png',
         subject: 'MarSU Lost & Found QR Tag - ${widget.item.itemName}',
         text: 'MarSU Lost & Found Item QR Tag for: ${widget.item.itemName} (${widget.item.category})',
       );
@@ -148,6 +191,7 @@ class _ItemQrDetailsScreenState extends State<ItemQrDetailsScreen> {
     final appState = context.watch<AppState>();
     final dateFormat = DateFormat('MMMM dd, yyyy');
     final activeQr = appState.qrForReport(widget.item.id) ?? widget.initialQr;
+    final qrPayload = _renderableQrPayload(activeQr);
 
     return Scaffold(
       appBar: AppBar(
@@ -218,11 +262,9 @@ class _ItemQrDetailsScreenState extends State<ItemQrDetailsScreen> {
                   ),
                   const SizedBox(height: 16),
                   // Render QR Matrix
-                  if (activeQr != null)
+                  if (activeQr != null && qrPayload != null)
                     QrImageView(
-                      data: activeQr.qrPayload.isNotEmpty
-                          ? activeQr.qrPayload
-                          : 'marsu://item/${widget.item.id}',
+                      data: qrPayload,
                       version: QrVersions.auto,
                       size: 220,
                       gapless: true,
@@ -236,10 +278,38 @@ class _ItemQrDetailsScreenState extends State<ItemQrDetailsScreen> {
                       ),
                     )
                   else
-                    const SizedBox(
-                      height: 220,
-                      child: Center(
-                        child: CircularProgressIndicator(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Column(
+                        children: [
+                          Icon(
+                            activeQr == null
+                                ? Icons.qr_code_2
+                                : Icons.phonelink_lock,
+                            size: 56,
+                            color: AppColors.warning,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            activeQr == null
+                                ? 'No active QR tag found for this item.'
+                                : 'QR token is stored only on the original device.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Generate a fresh QR tag on this device to print, download, or share it.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   const SizedBox(height: 12),
@@ -285,53 +355,74 @@ class _ItemQrDetailsScreenState extends State<ItemQrDetailsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Action Buttons: Download & Share
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: (_saving || activeQr == null)
-                      ? null
-                      : () => _downloadQr(activeQr),
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.download),
-                  label: const Text('Download Tag'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+          // Action Buttons: Download & Share or Generate
+          if (activeQr != null && qrPayload != null)
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _saving ? null : () => _downloadQr(activeQr),
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download),
+                    label: const Text('Download Tag'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: (_sharing || activeQr == null)
-                      ? null
-                      : () => _shareQr(activeQr),
-                  icon: _sharing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.share),
-                  label: const Text('Share QR Image'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryMaroon,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _sharing ? null : () => _shareQr(activeQr),
+                    icon: _sharing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.share),
+                    label: const Text('Share QR Image'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryMaroon,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                   ),
                 ),
+              ],
+            )
+          else
+            ElevatedButton.icon(
+              onPressed: _generating ? null : _generateOrRefreshQr,
+              icon: _generating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.qr_code_2),
+              label: Text(
+                _generating
+                    ? 'Generating QR Tag...'
+                    : 'Generate QR Tag On This Device',
               ),
-            ],
-          ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryMaroon,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
           const SizedBox(height: 20),
 
           // Item Information & QR Verification Status Card
@@ -388,7 +479,7 @@ class _ItemQrDetailsScreenState extends State<ItemQrDetailsScreen> {
                     ),
                   const SizedBox(height: 8),
                   Text(
-                    'Token Hash (SHA-256): ${activeQr?.tokenHash.isNotEmpty == true ? "${activeQr!.tokenHash.substring(0, 16)}..." : "Encrypted"}',
+                    'Token Hash (SHA-256): ${activeQr != null && activeQr.tokenHash.length >= 16 ? "${activeQr.tokenHash.substring(0, 16)}..." : "Encrypted"}',
                     style: const TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',
